@@ -1,0 +1,1067 @@
+openapi: 3.0.3
+info:
+  title: Smart City API
+  description: |
+    API REST de gestion des signalements urbains (Smart City).
+
+    ## Authentification
+    Utilisez `POST /api/auth/login` pour obtenir un **accessToken** JWT (durée 1 h).
+    Envoyez-le dans le header : `Authorization: Bearer <accessToken>`.
+
+    Comptes démo (mot de passe `demo`) :
+    | Email | Rôle |
+    |-------|------|
+    | marie@example.com | citoyen |
+    | luc@mairie.fr | agent |
+    | jean@mairie.fr | responsable |
+    | admin@mairie.fr | admin |
+
+    ## Filtrage par rôle
+    Les listes `GET /api/incidents` et `GET /api/interventions` sont automatiquement filtrées selon le JWT :
+    - **citoyen** : ses signalements uniquement
+    - **agent** : incidents assignés (union directe + interventions) / ses interventions
+    - **responsable / admin** : accès complet (filtres query optionnels)
+
+    ## Préfixes
+    Toutes les routes existent sous `/api/...` et `/api/v1/...` (alias).
+  version: 1.0.0
+  contact:
+    name: Smart City
+  license:
+    name: ISC
+
+servers:
+  - url: http://localhost:3000
+    description: Développement local
+  - url: http://localhost:3000/api/v1
+    description: Développement local (préfixe v1)
+
+tags:
+  - name: Auth
+    description: Connexion et tokens JWT
+  - name: Health
+    description: Santé de l'API
+  - name: Incidents
+    description: Signalements urbains
+  - name: Interventions
+    description: Planning et assignation agents
+  - name: Users
+    description: Gestion des utilisateurs
+  - name: Audit
+    description: Journal d'audit des changements de statut
+  - name: Media
+    description: Photos et géocodage
+  - name: Uploads
+    description: Upload de fichiers (legacy)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token obtenu via POST /api/auth/login
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Message d'erreur
+        code:
+          type: string
+          example: INVALID_TOKEN
+
+    Success:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+
+    UserRole:
+      type: string
+      enum: [citoyen, agent, responsable, admin]
+
+    IncidentCategory:
+      type: string
+      enum: [voirie, proprete, securite, autre]
+
+    IncidentPriority:
+      type: string
+      enum: [faible, moyen, urgent, critique]
+
+    IncidentStatus:
+      type: string
+      enum: [nouveau, en_attente, en_cours, resolu, ferme, rejete]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 9
+        email:
+          type: string
+          format: email
+          example: marie@example.com
+        full_name:
+          type: string
+          example: Marie Dupont
+        role:
+          $ref: '#/components/schemas/UserRole'
+        phone:
+          type: string
+          nullable: true
+          example: "+33612345678"
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        consent_at:
+          type: string
+          format: date-time
+          nullable: true
+        anonymized_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    RefreshResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+
+    Incident:
+      type: object
+      properties:
+        id:
+          type: integer
+        ref_code:
+          type: string
+          nullable: true
+          example: REF-2026-12345
+        citizen_id:
+          type: integer
+        agent_id:
+          type: integer
+          nullable: true
+        category:
+          $ref: '#/components/schemas/IncidentCategory'
+        subcategory:
+          type: string
+          nullable: true
+        priority:
+          $ref: '#/components/schemas/IncidentPriority'
+        description:
+          type: string
+          nullable: true
+        photo_path:
+          type: string
+          nullable: true
+          description: Chemin relatif `uploads/...` servi via GET /api/images
+        address:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          format: float
+        longitude:
+          type: number
+          format: float
+        status:
+          $ref: '#/components/schemas/IncidentStatus'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    IncidentCreate:
+      type: object
+      required: [category]
+      properties:
+        category:
+          $ref: '#/components/schemas/IncidentCategory'
+        subcategory:
+          type: string
+        priority:
+          $ref: '#/components/schemas/IncidentPriority'
+          default: moyen
+        description:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        photo_path:
+          type: string
+          nullable: true
+        photo_data:
+          type: string
+          description: Image encodée en base64 (recommandé)
+        photo_filename:
+          type: string
+          example: photo.jpg
+        photo_mime:
+          type: string
+          example: image/jpeg
+
+    IncidentUpdate:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/IncidentStatus'
+        agent_id:
+          type: integer
+          nullable: true
+        priority:
+          $ref: '#/components/schemas/IncidentPriority'
+        description:
+          type: string
+        audit_comment:
+          type: string
+          description: Commentaire d'audit (non persisté sur l'incident, journalisé si changement de statut)
+
+    Intervention:
+      type: object
+      properties:
+        id:
+          type: integer
+        incident_id:
+          type: integer
+        agent_id:
+          type: integer
+        scheduled_date:
+          type: string
+          format: date
+        comment:
+          type: string
+          nullable: true
+        photo_result_path:
+          type: string
+          nullable: true
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    InterventionEnriched:
+      allOf:
+        - $ref: '#/components/schemas/Intervention'
+        - type: object
+          properties:
+            incident_ref_code:
+              type: string
+            incident_description:
+              type: string
+            incident_status:
+              $ref: '#/components/schemas/IncidentStatus'
+            incident_address:
+              type: string
+            incident_category:
+              $ref: '#/components/schemas/IncidentCategory'
+            incident_priority:
+              $ref: '#/components/schemas/IncidentPriority'
+
+    InterventionCreate:
+      type: object
+      required: [incident_id, agent_id, scheduled_date]
+      properties:
+        incident_id:
+          type: integer
+        agent_id:
+          type: integer
+        scheduled_date:
+          type: string
+          format: date
+        comment:
+          type: string
+          nullable: true
+
+    InterventionUpdate:
+      type: object
+      properties:
+        incident_id:
+          type: integer
+        agent_id:
+          type: integer
+        scheduled_date:
+          type: string
+          format: date
+        comment:
+          type: string
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserCreate:
+      type: object
+      required: [email, password, role, full_name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 4
+        role:
+          $ref: '#/components/schemas/UserRole'
+        full_name:
+          type: string
+        phone:
+          type: string
+        consent:
+          type: boolean
+          description: Enregistre consent_at (RGPD)
+
+    UserUpdate:
+      type: object
+      properties:
+        email:
+          type: string
+        full_name:
+          type: string
+        phone:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        is_active:
+          type: boolean
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        incident_id:
+          type: integer
+          nullable: true
+        actor_id:
+          type: integer
+          nullable: true
+        old_status:
+          type: string
+          nullable: true
+        new_status:
+          type: string
+        comment:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    AuditCreate:
+      type: object
+      required: [new_status]
+      properties:
+        incident_id:
+          type: integer
+        actor_id:
+          type: integer
+        old_status:
+          type: string
+        new_status:
+          type: string
+        comment:
+          type: string
+
+    GeocodeResponse:
+      type: object
+      properties:
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+
+    PhotoUploadRequest:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: string
+          description: Contenu image en base64
+        filename:
+          type: string
+        mime:
+          type: string
+          example: image/jpeg
+
+    PhotoUploadResponse:
+      type: object
+      properties:
+        path:
+          type: string
+          example: uploads/signalement-1234567890-abc123.jpg
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    Unauthorized:
+      description: Token manquant ou invalide
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Token manquant
+            code: NO_TOKEN
+    Forbidden:
+      description: Accès refusé pour ce rôle
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Vérifier l'état de l'API
+      operationId: healthCheck
+      responses:
+        '200':
+          description: API opérationnelle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: marie@example.com
+              password: demo
+      responses:
+        '200':
+          description: Connexion réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Champs manquants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Identifiants incorrects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Trop de tentatives (rate limit)
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Renouveler l'access token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Nouveau token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '401':
+          description: Refresh token invalide ou révoqué
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Déconnexion (révoque le refresh token)
+      operationId: logout
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Déconnexion réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/incidents:
+    get:
+      tags: [Incidents]
+      summary: Lister les incidents (filtré par rôle)
+      operationId: listIncidents
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/IncidentStatus'
+        - name: category
+          in: query
+          schema:
+            $ref: '#/components/schemas/IncidentCategory'
+        - name: citizen_id
+          in: query
+          schema:
+            type: integer
+          description: Filtre (responsable/admin uniquement)
+        - name: agent_id
+          in: query
+          schema:
+            type: integer
+          description: Filtre (responsable/admin uniquement ; agent = forcé à JWT sub)
+      responses:
+        '200':
+          description: Liste d'incidents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Incident'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Incidents]
+      summary: Créer un signalement
+      description: |
+        Réservé au rôle **citoyen**. Le `citizen_id` est forcé depuis le JWT.
+        Géocodage automatique si latitude/longitude absents et adresse fournie.
+        Photo via `photo_data` (base64) ou `photo_path` existant.
+      operationId: createIncident
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncidentCreate'
+            example:
+              category: voirie
+              subcategory: Nid-de-poule
+              priority: moyen
+              description: Nid de poule dangereux
+              address: 12 Rue de la Paix, Paris
+      responses:
+        '201':
+          description: Signalement créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+        '400':
+          description: Données invalides
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Seuls les citoyens peuvent créer
+
+  /api/incidents/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [Incidents]
+      summary: Détail d'un incident
+      operationId: getIncident
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Incident
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Incidents]
+      summary: Mettre à jour un incident
+      description: |
+        **Agent** : incidents assignés uniquement.
+        **Responsable / Admin** : tous les incidents.
+        Le champ `audit_comment` déclenche une entrée d'audit si le statut change.
+      operationId: updateIncident
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncidentUpdate'
+            example:
+              status: en_cours
+              audit_comment: Prise en charge par l'agent
+      responses:
+        '200':
+          description: Incident mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Incidents]
+      summary: Supprimer un incident
+      description: Réservé aux rôles **responsable** et **admin**.
+      operationId: deleteIncident
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/interventions:
+    get:
+      tags: [Interventions]
+      summary: Lister les interventions
+      description: |
+        Retourne `[]` pour les **citoyens**.
+        Réponse enrichie avec champs incident (`incident_ref_code`, etc.).
+      operationId: listInterventions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: incident_id
+          in: query
+          schema:
+            type: integer
+        - name: agent_id
+          in: query
+          schema:
+            type: integer
+          description: Agent = forcé à JWT sub
+      responses:
+        '200':
+          description: Liste d'interventions enrichies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InterventionEnriched'
+
+    post:
+      tags: [Interventions]
+      summary: Planifier une intervention
+      description: Réservé au rôle **responsable**. Met à jour `incidents.agent_id`.
+      operationId: createIntervention
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InterventionCreate'
+            example:
+              incident_id: 1
+              agent_id: 2
+              scheduled_date: "2026-06-05"
+              comment: Intervention planifiée
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Intervention'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/interventions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [Interventions]
+      summary: Détail d'une intervention
+      operationId: getIntervention
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Intervention'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Interventions]
+      summary: Modifier une intervention
+      description: |
+        **Responsable** : tous les champs.
+        **Agent** : `comment` uniquement (sur ses interventions).
+      operationId: updateIntervention
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InterventionUpdate'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Intervention'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    delete:
+      tags: [Interventions]
+      summary: Supprimer une intervention
+      description: Réservé au rôle **responsable**. Recalcule `incidents.agent_id`.
+      operationId: deleteIntervention
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: Lister les utilisateurs
+      description: Rôles **admin** ou **responsable**.
+      operationId: listUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          schema:
+            $ref: '#/components/schemas/UserRole'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Users]
+      summary: Créer un utilisateur
+      operationId: createUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [Users]
+      summary: Détail utilisateur
+      operationId: getUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Users]
+      summary: Modifier un utilisateur
+      description: Rôle **admin** uniquement.
+      operationId: updateUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    delete:
+      tags: [Users]
+      summary: Supprimer un utilisateur
+      operationId: deleteUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /api/users/{id}/anonymize:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      tags: [Users]
+      summary: Anonymiser un compte (RGPD)
+      description: Rôle **admin** uniquement.
+      operationId: anonymizeUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
+  /api/audit:
+    get:
+      tags: [Audit]
+      summary: Journal d'audit
+      operationId: listAuditLogs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: incident_id
+          in: query
+          schema:
+            type: integer
+        - name: actor_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLog'
+
+    post:
+      tags: [Audit]
+      summary: Créer une entrée d'audit
+      description: Rôle **admin** uniquement.
+      operationId: createAuditLog
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditCreate'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLog'
+
+  /api/geocode:
+    get:
+      tags: [Media]
+      summary: Géocoder une adresse
+      description: Proxy Nominatim (OpenStreetMap). Public, sans JWT.
+      operationId: geocode
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          example: 12 Rue de la Paix, Paris
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeocodeResponse'
+        '400':
+          description: Adresse trop courte
+
+  /api/images:
+    get:
+      tags: [Media]
+      summary: Servir une photo de signalement
+      operationId: getImage
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Chemin `uploads/...` ou chemin absolu autorisé
+      responses:
+        '200':
+          description: Fichier image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Fichier introuvable
+
+  /api/uploads/photo:
+    post:
+      tags: [Uploads]
+      summary: Upload photo (legacy)
+      description: |
+        Alternative à `photo_data` dans POST /api/incidents.
+        Réservé au rôle **citoyen**. Max 5 Mo.
+      operationId: uploadPhoto
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhotoUploadRequest'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoUploadResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'

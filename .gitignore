@@ -1,0 +1,71 @@
+# Dépendances
+node_modules/
+
+# Build & bundlers
+dist/
+dist-electron/
+out/
+release/
+.vite/
+
+# Electron
+*.asar
+
+# Variables d'environnement (secrets JWT, chemins DB)
+.env
+.env.local
+.env.*.local
+
+# Base de données locale
+data/*.sqlite
+data/*.sqlite-journal
+data/*.sqlite-wal
+data/*.sqlite-shm
+data/*.db
+
+# Uploads utilisateurs (photos signalements)
+data/uploads/*
+!data/uploads/.gitkeep
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Tests & couverture
+coverage/
+.nyc_output/
+
+# Cache & temporaires
+.cache/
+.temp/
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE / éditeurs
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.sublime-project
+*.sublime-workspace
+
+# Cursor (plans locaux, pas le repo)
+.cursor/
+
+# TypeScript
+*.tsbuildinfo
+
+# Vitest
+vitest.config.*.timestamp-*
